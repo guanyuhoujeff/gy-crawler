@@ -10,13 +10,28 @@ from .paths import build_account_directory_name
 
 def write_payload(output_dir, payload):
     output_dir.mkdir(parents=True, exist_ok=True)
-    path = output_dir / f"{payload['reel_id']}.json"
+    path = output_dir / f"{payload['content_id']}.json"
     path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
     return path
 
 
-def export_reels(profile_url, output_root, limit, collector, collected_at=None):
-    profile = collector.collect_profile(profile_url, limit)
+def export_reels(
+    profile_url,
+    output_root,
+    limit,
+    collector,
+    collected_at=None,
+    scroll=True,
+    max_scrolls=10,
+    max_idle_scrolls=2,
+):
+    profile = collector.collect_profile(
+        profile_url,
+        limit,
+        scroll=scroll,
+        max_scrolls=max_scrolls,
+        max_idle_scrolls=max_idle_scrolls,
+    )
     output_dir = Path(output_root) / build_account_directory_name(profile["account_name"])
     summary = {"discovered": len(profile["reels"]), "written": 0, "failed": 0}
 
@@ -51,6 +66,15 @@ def parse_args(argv=None):
     parser.add_argument("--profile-url", required=True)
     parser.add_argument("--limit", type=int, default=10)
     parser.add_argument("--output-root", default="output")
+    parser.set_defaults(scroll=True)
+    parser.add_argument(
+        "--no-scroll",
+        dest="scroll",
+        action="store_false",
+        help="Disable scrolling and only collect currently loaded reels",
+    )
+    parser.add_argument("--max-scrolls", type=int, default=10)
+    parser.add_argument("--max-idle-scrolls", type=int, default=2)
     parser.add_argument("--headed", action="store_true", help="Run with a visible browser window")
     parser.add_argument("--delay-seconds", type=float, default=1.5)
     return parser.parse_args(argv)
@@ -73,6 +97,9 @@ def main(argv=None, collector=None, collected_at=None):
             limit=args.limit,
             collector=managed_collector,
             collected_at=collected_at,
+            scroll=args.scroll,
+            max_scrolls=args.max_scrolls,
+            max_idle_scrolls=args.max_idle_scrolls,
         )
     except Exception as exc:  # noqa: BLE001
         print(str(exc), file=sys.stderr)

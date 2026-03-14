@@ -1,5 +1,5 @@
 from .parser import extract_caption_from_html, extract_publish_time_from_html
-from .paths import extract_reel_id
+from .paths import canonicalize_reel_url, extract_reel_id
 
 
 VISIBLE_REELS_SCRIPT = """
@@ -25,23 +25,60 @@ VISIBLE_REELS_SCRIPT = """
 """
 
 
-def collect_visible_reels(page, limit):
+def _scroll_page(page):
+    if hasattr(page, "mouse") and hasattr(page.mouse, "wheel"):
+        page.mouse.wheel(0, 3000)
+    else:
+        page.evaluate("window.scrollTo(0, document.body.scrollHeight)")
+
+
+def collect_visible_reels(
+    page,
+    limit,
+    scroll=True,
+    max_scrolls=10,
+    max_idle_scrolls=2,
+    delay_ms=1000,
+):
     raw_items = page.evaluate(VISIBLE_REELS_SCRIPT, limit)
     reels = []
     seen = set()
-    for item in raw_items:
-        reel_url = item["href"]
-        if reel_url in seen:
-            continue
-        seen.add(reel_url)
-        reels.append(
-            {
-                "reel_url": reel_url,
-                "view_count_visible": item.get("text") or None,
-            }
-        )
-        if len(reels) >= limit:
+    scrolls = 0
+    idle_scrolls = 0
+
+    while True:
+        new_count = 0
+        for item in raw_items:
+            reel_url = canonicalize_reel_url(item["href"])
+            if reel_url in seen:
+                continue
+            seen.add(reel_url)
+            new_count += 1
+            reels.append(
+                {
+                    "reel_url": reel_url,
+                    "view_count_visible": item.get("text") or None,
+                }
+            )
+            if len(reels) >= limit:
+                break
+
+        if len(reels) >= limit or not scroll or scrolls >= max_scrolls:
             break
+
+        if new_count == 0:
+            idle_scrolls += 1
+        else:
+            idle_scrolls = 0
+        if idle_scrolls >= max_idle_scrolls:
+            break
+
+        _scroll_page(page)
+        if hasattr(page, "wait_for_timeout"):
+            page.wait_for_timeout(delay_ms)
+        scrolls += 1
+        raw_items = page.evaluate(VISIBLE_REELS_SCRIPT, limit)
+
     return reels
 
 
@@ -75,10 +112,24 @@ class PlaywrightFacebookCollector:
         self._page.goto(url, wait_until="domcontentloaded")
         self._page.wait_for_timeout(int(self.delay_seconds * 1000))
 
-    def collect_profile(self, profile_url, limit):
+    def collect_profile(
+        self,
+        profile_url,
+        limit,
+        scroll=True,
+        max_scrolls=10,
+        max_idle_scrolls=2,
+    ):
         self._goto(profile_url)
         account_name = self._page.locator("h1").first.inner_text().strip()
-        reels = collect_visible_reels(self._page, limit=limit)
+        reels = collect_visible_reels(
+            self._page,
+            limit=limit,
+            scroll=scroll,
+            max_scrolls=max_scrolls,
+            max_idle_scrolls=max_idle_scrolls,
+            delay_ms=int(self.delay_seconds * 1000),
+        )
         if not reels:
             raise RuntimeError("Profile collection failed: no visible reels found")
         return {
