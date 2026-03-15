@@ -21,8 +21,8 @@ output/
 ## Setup
 
 ```bash
-conda create -n gy-finance python=3.11 -y
-conda activate gy-finance
+conda create -n gy-crawler python=3.12 -y
+conda activate gy-crawler
 pip install -e .
 python -m playwright install chromium
 ```
@@ -30,6 +30,14 @@ python -m playwright install chromium
 ## Commands
 
 Facebook Reels:
+
+```bash
+python scripts/facebook_reels_export.py \
+  --profile-url "https://www.facebook.com/profile.php?id=100070097403579&sk=reels_tab" \
+  --limit 10 \
+  --output-root output
+```
+
 
 ```bash
 python -m gy_crawler.sources.facebook.reels.cli \
