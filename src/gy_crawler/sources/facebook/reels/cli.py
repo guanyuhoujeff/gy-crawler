@@ -71,9 +71,15 @@ def export_reels(
 def parse_args(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--profile-url", required=True)
-    parser.add_argument("--limit", type=int, default=10)
     parser.add_argument("--output-root", default="output")
     parser.add_argument("--storage-state")
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument("--limit", type=int)
+    mode_group.add_argument(
+        "--all-visible",
+        action="store_true",
+        help="Scroll until the reels page stops surfacing new visible reels",
+    )
     parser.set_defaults(scroll=True)
     parser.add_argument(
         "--no-scroll",
@@ -85,7 +91,10 @@ def parse_args(argv=None):
     parser.add_argument("--max-idle-scrolls", type=int, default=2)
     parser.add_argument("--headed", action="store_true", help="Run with a visible browser window")
     parser.add_argument("--delay-seconds", type=float, default=1.5)
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if not args.all_visible and args.limit is None:
+        args.limit = 10
+    return args
 
 
 def main(argv=None, collector=None, collected_at=None):

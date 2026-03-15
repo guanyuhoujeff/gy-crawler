@@ -465,6 +465,58 @@ class StorageStateErrorTests(unittest.TestCase):
         )
 
 
+class AllVisibleCliModeTests(unittest.TestCase):
+    def test_parse_args_accepts_all_visible_mode(self):
+        args = cli.parse_args(
+            [
+                "--profile-url",
+                "https://example.com/reels",
+                "--all-visible",
+            ]
+        )
+
+        self.assertTrue(args.all_visible)
+        self.assertIsNone(args.limit)
+
+    def test_parse_args_accepts_limit_mode(self):
+        args = cli.parse_args(
+            [
+                "--profile-url",
+                "https://example.com/reels",
+                "--limit",
+                "25",
+            ]
+        )
+
+        self.assertFalse(args.all_visible)
+        self.assertEqual(args.limit, 25)
+
+    def test_parse_args_rejects_limit_and_all_visible_together(self):
+        with self.assertRaises(SystemExit) as exc_info:
+            cli.parse_args(
+                [
+                    "--profile-url",
+                    "https://example.com/reels",
+                    "--limit",
+                    "25",
+                    "--all-visible",
+                ]
+            )
+
+        self.assertEqual(exc_info.exception.code, 2)
+
+    def test_parse_args_defaults_to_limit_mode(self):
+        args = cli.parse_args(
+            [
+                "--profile-url",
+                "https://example.com/reels",
+            ]
+        )
+
+        self.assertFalse(args.all_visible)
+        self.assertEqual(args.limit, 10)
+
+
 class MainTests(unittest.TestCase):
     def test_main_writes_one_json_per_visible_reel(self):
         with tempfile.TemporaryDirectory() as tmpdir:
