@@ -122,6 +122,7 @@ class PlaywrightFacebookCollector:
         self,
         profile_url,
         limit,
+        all_visible=False,
         scroll=True,
         max_scrolls=10,
         max_idle_scrolls=2,
@@ -131,6 +132,7 @@ class PlaywrightFacebookCollector:
         reels = collect_visible_reels(
             self._page,
             limit=limit,
+            all_visible=all_visible,
             scroll=scroll,
             max_scrolls=max_scrolls,
             max_idle_scrolls=max_idle_scrolls,

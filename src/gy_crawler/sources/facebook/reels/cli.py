@@ -26,6 +26,7 @@ def export_reels(
     profile_url,
     output_root,
     limit,
+    all_visible,
     collector,
     collected_at=None,
     scroll=True,
@@ -35,6 +36,7 @@ def export_reels(
     profile = collector.collect_profile(
         profile_url,
         limit,
+        all_visible=all_visible,
         scroll=scroll,
         max_scrolls=max_scrolls,
         max_idle_scrolls=max_idle_scrolls,
@@ -126,6 +128,7 @@ def main(argv=None, collector=None, collected_at=None):
             profile_url=args.profile_url,
             output_root=args.output_root,
             limit=args.limit,
+            all_visible=args.all_visible,
             collector=managed_collector,
             collected_at=collected_at,
             scroll=args.scroll,
