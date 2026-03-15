@@ -8,6 +8,13 @@ from .models import build_reel_payload
 from .paths import build_account_directory_name
 
 
+def build_storage_state_refresh_message(storage_state_path):
+    return (
+        "Rerun the login bootstrap to refresh the saved Facebook session:\n"
+        f"python3 scripts/facebook_login_session.py --storage-state {storage_state_path} --headed"
+    )
+
+
 def write_payload(output_dir, payload):
     output_dir.mkdir(parents=True, exist_ok=True)
     path = output_dir / f"{payload['content_id']}.json"
@@ -19,6 +26,7 @@ def export_reels(
     profile_url,
     output_root,
     limit,
+    all_visible,
     collector,
     collected_at=None,
     scroll=True,
@@ -28,6 +36,7 @@ def export_reels(
     profile = collector.collect_profile(
         profile_url,
         limit,
+        all_visible=all_visible,
         scroll=scroll,
         max_scrolls=max_scrolls,
         max_idle_scrolls=max_idle_scrolls,
@@ -64,8 +73,15 @@ def export_reels(
 def parse_args(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--profile-url", required=True)
-    parser.add_argument("--limit", type=int, default=10)
     parser.add_argument("--output-root", default="output")
+    parser.add_argument("--storage-state")
+    mode_group = parser.add_mutually_exclusive_group()
+    mode_group.add_argument("--limit", type=int)
+    mode_group.add_argument(
+        "--all-visible",
+        action="store_true",
+        help="Scroll until the reels page stops surfacing new visible reels",
+    )
     parser.set_defaults(scroll=True)
     parser.add_argument(
         "--no-scroll",
@@ -77,24 +93,42 @@ def parse_args(argv=None):
     parser.add_argument("--max-idle-scrolls", type=int, default=2)
     parser.add_argument("--headed", action="store_true", help="Run with a visible browser window")
     parser.add_argument("--delay-seconds", type=float, default=1.5)
-    return parser.parse_args(argv)
+    args = parser.parse_args(argv)
+    if not args.all_visible and args.limit is None:
+        args.limit = 10
+    return args
 
 
 def main(argv=None, collector=None, collected_at=None):
     args = parse_args(argv)
     managed_collector = collector
+    storage_state_path = None
+
+    if args.storage_state:
+        storage_state_path = Path(args.storage_state)
+        if not storage_state_path.is_file():
+            print(
+                (
+                    f"Storage state file not found: {storage_state_path}\n"
+                    f"{build_storage_state_refresh_message(storage_state_path)}"
+                ),
+                file=sys.stderr,
+            )
+            return 1
 
     try:
         if managed_collector is None:
             managed_collector = PlaywrightFacebookCollector(
                 headless=not args.headed,
                 delay_seconds=args.delay_seconds,
+                storage_state_path=str(storage_state_path) if storage_state_path else None,
             ).__enter__()
 
         summary, output_dir = export_reels(
             profile_url=args.profile_url,
             output_root=args.output_root,
             limit=args.limit,
+            all_visible=args.all_visible,
             collector=managed_collector,
             collected_at=collected_at,
             scroll=args.scroll,
@@ -102,7 +136,17 @@ def main(argv=None, collector=None, collected_at=None):
             max_idle_scrolls=args.max_idle_scrolls,
         )
     except Exception as exc:  # noqa: BLE001
-        print(str(exc), file=sys.stderr)
+        if storage_state_path is not None:
+            print(
+                (
+                    f"{exc}\n"
+                    "The saved Facebook session may be expired.\n"
+                    f"{build_storage_state_refresh_message(storage_state_path)}"
+                ),
+                file=sys.stderr,
+            )
+        else:
+            print(str(exc), file=sys.stderr)
         return 1
     finally:
         if collector is None and managed_collector is not None:

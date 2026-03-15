@@ -1,7 +1,11 @@
 import json
+import io
+import types
 import tempfile
 import unittest
+from contextlib import redirect_stderr
 from pathlib import Path
+from unittest import mock
 
 from gy_crawler.sources.facebook.reels import cli, collector, parser, paths
 
@@ -216,11 +220,102 @@ class VisibleReelCollectionTests(unittest.TestCase):
         self.assertEqual(page.scroll_round, 2)
 
 
+class AllVisibleCollectionTests(unittest.TestCase):
+    def test_collect_visible_reels_collects_across_scroll_rounds_until_idle_stop(self):
+        page = FakePage(
+            [
+                [{"href": "https://www.facebook.com/reel/795067433657541/", "text": "19K"}],
+                [
+                    {"href": "https://www.facebook.com/reel/795067433657541/", "text": "19K"},
+                    {"href": "https://www.facebook.com/reel/814700504289989/", "text": "15K"},
+                ],
+                [
+                    {"href": "https://www.facebook.com/reel/795067433657541/", "text": "19K"},
+                    {"href": "https://www.facebook.com/reel/814700504289989/", "text": "15K"},
+                    {"href": "https://www.facebook.com/reel/1242954067485245/", "text": "12K"},
+                ],
+                [
+                    {"href": "https://www.facebook.com/reel/814700504289989/", "text": "15K"},
+                    {"href": "https://www.facebook.com/reel/1242954067485245/", "text": "12K"},
+                ],
+                [
+                    {"href": "https://www.facebook.com/reel/814700504289989/", "text": "15K"},
+                    {"href": "https://www.facebook.com/reel/1242954067485245/", "text": "12K"},
+                ],
+            ]
+        )
+
+        result = collector.collect_visible_reels(
+            page,
+            limit=1,
+            all_visible=True,
+            scroll=True,
+            max_scrolls=10,
+            max_idle_scrolls=2,
+        )
+
+        self.assertEqual(
+            result,
+            [
+                {
+                    "reel_url": "https://www.facebook.com/reel/795067433657541/",
+                    "view_count_visible": "19K",
+                },
+                {
+                    "reel_url": "https://www.facebook.com/reel/814700504289989/",
+                    "view_count_visible": "15K",
+                },
+                {
+                    "reel_url": "https://www.facebook.com/reel/1242954067485245/",
+                    "view_count_visible": "12K",
+                },
+            ],
+        )
+        self.assertEqual(page.scroll_round, 4)
+
+    def test_collect_visible_reels_all_visible_mode_still_deduplicates_across_rounds(self):
+        page = FakePage(
+            [
+                [{"href": "https://www.facebook.com/reel/795067433657541/?foo=bar", "text": "19K"}],
+                [
+                    {"href": "https://www.facebook.com/reel/795067433657541/", "text": "19K"},
+                    {"href": "https://www.facebook.com/reel/795067433657541/?tracking=1", "text": "19K"},
+                    {"href": "https://www.facebook.com/reel/814700504289989/", "text": "15K"},
+                ],
+                [
+                    {"href": "https://www.facebook.com/reel/814700504289989/?foo=1", "text": "15K"},
+                ],
+                [
+                    {"href": "https://www.facebook.com/reel/814700504289989/?foo=1", "text": "15K"},
+                ],
+            ]
+        )
+
+        result = collector.collect_visible_reels(
+            page,
+            limit=1,
+            all_visible=True,
+            scroll=True,
+            max_scrolls=10,
+            max_idle_scrolls=2,
+        )
+
+        self.assertEqual(len(result), 2)
+        self.assertEqual(
+            [item["reel_url"] for item in result],
+            [
+                "https://www.facebook.com/reel/795067433657541/",
+                "https://www.facebook.com/reel/814700504289989/",
+            ],
+        )
+
+
 class FakeCollector:
     def collect_profile(
         self,
         profile_url,
         limit,
+        all_visible=False,
         scroll=True,
         max_scrolls=10,
         max_idle_scrolls=2,
@@ -246,6 +341,386 @@ class FakeCollector:
             "published_time_iso": "2025-05-05T22:30:00+00:00",
             "caption": f"caption for {reel_url}",
         }
+
+
+class FakeBrowserContext:
+    def __init__(self):
+        self.closed = False
+        self.page = object()
+
+    def new_page(self):
+        return self.page
+
+    def close(self):
+        self.closed = True
+
+
+class FakeBrowser:
+    def __init__(self):
+        self.closed = False
+        self.new_context_calls = []
+        self.context = FakeBrowserContext()
+
+    def new_context(self, **kwargs):
+        self.new_context_calls.append(kwargs)
+        return self.context
+
+    def close(self):
+        self.closed = True
+
+
+class FakeChromium:
+    def __init__(self, browser):
+        self.browser = browser
+        self.launch_calls = []
+
+    def launch(self, **kwargs):
+        self.launch_calls.append(kwargs)
+        return self.browser
+
+
+class FakePlaywrightRuntime:
+    def __init__(self, chromium):
+        self.chromium = chromium
+        self.stopped = False
+
+    def stop(self):
+        self.stopped = True
+
+
+class FakeSyncPlaywrightFactory:
+    def __init__(self, runtime):
+        self.runtime = runtime
+
+    def start(self):
+        return self.runtime
+
+
+class AuthenticatedCollectorTests(unittest.TestCase):
+    def test_enter_passes_storage_state_to_new_context(self):
+        browser = FakeBrowser()
+        chromium = FakeChromium(browser)
+        runtime = FakePlaywrightRuntime(chromium)
+        fake_sync_api = types.SimpleNamespace(
+            sync_playwright=lambda: FakeSyncPlaywrightFactory(runtime)
+        )
+
+        with mock.patch.dict("sys.modules", {"playwright.sync_api": fake_sync_api}):
+            managed = collector.PlaywrightFacebookCollector(
+                storage_state_path=".secrets/facebook-state.json"
+            )
+            try:
+                managed.__enter__()
+            finally:
+                managed.__exit__(None, None, None)
+
+        self.assertEqual(
+            browser.new_context_calls,
+            [{"storage_state": ".secrets/facebook-state.json"}],
+        )
+
+
+class StorageStateCliTests(unittest.TestCase):
+    def test_parse_args_accepts_storage_state(self):
+        args = cli.parse_args(
+            [
+                "--profile-url",
+                "https://example.com/reels",
+                "--storage-state",
+                ".secrets/facebook-state.json",
+            ]
+        )
+
+        self.assertEqual(args.storage_state, ".secrets/facebook-state.json")
+
+    def test_main_passes_storage_state_into_collector_construction(self):
+        captured = {}
+
+        class FakeManagedCollector:
+            def __enter__(self):
+                captured["entered"] = True
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                captured["exited"] = True
+
+        def fake_collector_factory(**kwargs):
+            captured["kwargs"] = kwargs
+            return FakeManagedCollector()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            storage_state = Path(tmpdir) / "facebook-state.json"
+            storage_state.write_text("{}", encoding="utf-8")
+
+            with mock.patch.object(cli, "PlaywrightFacebookCollector", side_effect=fake_collector_factory):
+                with mock.patch.object(
+                    cli,
+                    "export_reels",
+                    return_value=(
+                        {"discovered": 1, "written": 1, "failed": 0},
+                        Path(tmpdir) / "output",
+                    ),
+                ):
+                    exit_code = cli.main(
+                        [
+                            "--profile-url",
+                            "https://example.com/reels",
+                            "--storage-state",
+                            str(storage_state),
+                            "--output-root",
+                            tmpdir,
+                        ]
+                    )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(captured["kwargs"]["storage_state_path"], str(storage_state))
+
+    def test_main_returns_error_when_storage_state_path_is_missing(self):
+        stderr = io.StringIO()
+
+        with mock.patch.object(cli, "PlaywrightFacebookCollector") as collector_factory:
+            with redirect_stderr(stderr):
+                exit_code = cli.main(
+                    [
+                        "--profile-url",
+                        "https://example.com/reels",
+                        "--storage-state",
+                        ".secrets/missing-facebook-state.json",
+                    ]
+                )
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("storage state", stderr.getvalue().lower())
+        collector_factory.assert_not_called()
+
+
+class StorageStateErrorTests(unittest.TestCase):
+    def test_missing_storage_state_path_includes_refresh_command(self):
+        stderr = io.StringIO()
+
+        with redirect_stderr(stderr):
+            exit_code = cli.main(
+                [
+                    "--profile-url",
+                    "https://example.com/reels",
+                    "--storage-state",
+                    ".secrets/missing-facebook-state.json",
+                ]
+            )
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("rerun", stderr.getvalue().lower())
+        self.assertIn("facebook_login_session.py", stderr.getvalue())
+
+    def test_authenticated_collection_failure_mentions_expired_session_without_fallback(self):
+        stderr = io.StringIO()
+
+        class FakeManagedCollector:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return None
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            storage_state = Path(tmpdir) / "facebook-state.json"
+            storage_state.write_text("{}", encoding="utf-8")
+
+            with mock.patch.object(
+                cli,
+                "PlaywrightFacebookCollector",
+                return_value=FakeManagedCollector(),
+            ) as collector_factory:
+                with mock.patch.object(
+                    cli,
+                    "export_reels",
+                    side_effect=RuntimeError("Profile collection failed: no visible reels found"),
+                ):
+                    with redirect_stderr(stderr):
+                        exit_code = cli.main(
+                            [
+                                "--profile-url",
+                                "https://example.com/reels",
+                                "--storage-state",
+                                str(storage_state),
+                            ]
+                        )
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("expired", stderr.getvalue().lower())
+        self.assertIn("facebook_login_session.py", stderr.getvalue())
+        self.assertEqual(collector_factory.call_count, 1)
+        self.assertEqual(
+            collector_factory.call_args.kwargs["storage_state_path"],
+            str(storage_state),
+        )
+
+
+class AllVisibleCliModeTests(unittest.TestCase):
+    def test_parse_args_accepts_all_visible_mode(self):
+        args = cli.parse_args(
+            [
+                "--profile-url",
+                "https://example.com/reels",
+                "--all-visible",
+            ]
+        )
+
+        self.assertTrue(args.all_visible)
+        self.assertIsNone(args.limit)
+
+    def test_parse_args_accepts_limit_mode(self):
+        args = cli.parse_args(
+            [
+                "--profile-url",
+                "https://example.com/reels",
+                "--limit",
+                "25",
+            ]
+        )
+
+        self.assertFalse(args.all_visible)
+        self.assertEqual(args.limit, 25)
+
+    def test_parse_args_rejects_limit_and_all_visible_together(self):
+        with self.assertRaises(SystemExit) as exc_info:
+            cli.parse_args(
+                [
+                    "--profile-url",
+                    "https://example.com/reels",
+                    "--limit",
+                    "25",
+                    "--all-visible",
+                ]
+            )
+
+        self.assertEqual(exc_info.exception.code, 2)
+
+    def test_parse_args_defaults_to_limit_mode(self):
+        args = cli.parse_args(
+            [
+                "--profile-url",
+                "https://example.com/reels",
+            ]
+        )
+
+        self.assertFalse(args.all_visible)
+        self.assertEqual(args.limit, 10)
+
+
+class AllVisibleWiringTests(unittest.TestCase):
+    def test_export_reels_forwards_all_visible_to_collect_profile(self):
+        class RecordingCollector:
+            def __init__(self):
+                self.collect_profile_calls = []
+
+            def collect_profile(
+                self,
+                profile_url,
+                limit,
+                all_visible=False,
+                scroll=True,
+                max_scrolls=10,
+                max_idle_scrolls=2,
+            ):
+                self.collect_profile_calls.append(
+                    {
+                        "profile_url": profile_url,
+                        "limit": limit,
+                        "all_visible": all_visible,
+                        "scroll": scroll,
+                        "max_scrolls": max_scrolls,
+                        "max_idle_scrolls": max_idle_scrolls,
+                    }
+                )
+                return {
+                    "account_name": "SubudhiIsha1",
+                    "source_profile_url": profile_url,
+                    "reels": [],
+                }
+
+        collector_double = RecordingCollector()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            summary, output_dir = cli.export_reels(
+                profile_url="https://example.com/reels",
+                output_root=tmpdir,
+                limit=None,
+                all_visible=True,
+                collector=collector_double,
+            )
+
+        self.assertEqual(summary, {"discovered": 0, "written": 0, "failed": 0})
+        self.assertTrue(str(output_dir).endswith("facebook_subudhiisha1"))
+        self.assertEqual(
+            collector_double.collect_profile_calls,
+            [
+                {
+                    "profile_url": "https://example.com/reels",
+                    "limit": None,
+                    "all_visible": True,
+                    "scroll": True,
+                    "max_scrolls": 10,
+                    "max_idle_scrolls": 2,
+                }
+            ],
+        )
+
+    def test_main_passes_all_visible_into_export_flow(self):
+        captured = {}
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            storage_state = Path(tmpdir) / "facebook-state.json"
+            storage_state.write_text("{}", encoding="utf-8")
+
+            with mock.patch.object(cli, "PlaywrightFacebookCollector") as collector_factory:
+                with mock.patch.object(
+                    cli,
+                    "export_reels",
+                    return_value=(
+                        {"discovered": 3, "written": 3, "failed": 0},
+                        Path(tmpdir) / "output",
+                    ),
+                ) as export_reels:
+                    exit_code = cli.main(
+                        [
+                            "--profile-url",
+                            "https://example.com/reels",
+                            "--storage-state",
+                            str(storage_state),
+                            "--all-visible",
+                        ]
+                    )
+
+        self.assertEqual(exit_code, 0)
+        self.assertTrue(collector_factory.called)
+        self.assertTrue(export_reels.called)
+        captured.update(export_reels.call_args.kwargs)
+        self.assertTrue(captured["all_visible"])
+        self.assertIsNone(captured["limit"])
+
+    def test_main_keeps_limit_mode_when_all_visible_is_not_selected(self):
+        captured = {}
+
+        with mock.patch.object(
+            cli,
+            "export_reels",
+            return_value=({"discovered": 1, "written": 1, "failed": 0}, Path("output")),
+        ) as export_reels:
+            exit_code = cli.main(
+                [
+                    "--profile-url",
+                    "https://example.com/reels",
+                    "--limit",
+                    "7",
+                ],
+                collector=FakeCollector(),
+            )
+
+        self.assertEqual(exit_code, 0)
+        captured.update(export_reels.call_args.kwargs)
+        self.assertFalse(captured["all_visible"])
+        self.assertEqual(captured["limit"], 7)
 
 
 class MainTests(unittest.TestCase):

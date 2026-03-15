@@ -35,12 +35,14 @@ def _scroll_page(page):
 def collect_visible_reels(
     page,
     limit,
+    all_visible=False,
     scroll=True,
     max_scrolls=10,
     max_idle_scrolls=2,
     delay_ms=1000,
 ):
-    raw_items = page.evaluate(VISIBLE_REELS_SCRIPT, limit)
+    fetch_limit = limit if not all_visible else 10000
+    raw_items = page.evaluate(VISIBLE_REELS_SCRIPT, fetch_limit)
     reels = []
     seen = set()
     scrolls = 0
@@ -60,10 +62,10 @@ def collect_visible_reels(
                     "view_count_visible": item.get("text") or None,
                 }
             )
-            if len(reels) >= limit:
+            if not all_visible and len(reels) >= limit:
                 break
 
-        if len(reels) >= limit or not scroll or scrolls >= max_scrolls:
+        if (not all_visible and len(reels) >= limit) or not scroll or scrolls >= max_scrolls:
             break
 
         if new_count == 0:
@@ -77,15 +79,16 @@ def collect_visible_reels(
         if hasattr(page, "wait_for_timeout"):
             page.wait_for_timeout(delay_ms)
         scrolls += 1
-        raw_items = page.evaluate(VISIBLE_REELS_SCRIPT, limit)
+        raw_items = page.evaluate(VISIBLE_REELS_SCRIPT, fetch_limit)
 
     return reels
 
 
 class PlaywrightFacebookCollector:
-    def __init__(self, headless=True, delay_seconds=1.5):
+    def __init__(self, headless=True, delay_seconds=1.5, storage_state_path=None):
         self.headless = headless
         self.delay_seconds = delay_seconds
+        self.storage_state_path = storage_state_path
         self._playwright = None
         self._browser = None
         self._context = None
@@ -96,7 +99,10 @@ class PlaywrightFacebookCollector:
 
         self._playwright = sync_playwright().start()
         self._browser = self._playwright.chromium.launch(headless=self.headless)
-        self._context = self._browser.new_context()
+        context_kwargs = {}
+        if self.storage_state_path is not None:
+            context_kwargs["storage_state"] = self.storage_state_path
+        self._context = self._browser.new_context(**context_kwargs)
         self._page = self._context.new_page()
         return self
 
@@ -116,6 +122,7 @@ class PlaywrightFacebookCollector:
         self,
         profile_url,
         limit,
+        all_visible=False,
         scroll=True,
         max_scrolls=10,
         max_idle_scrolls=2,
@@ -125,6 +132,7 @@ class PlaywrightFacebookCollector:
         reels = collect_visible_reels(
             self._page,
             limit=limit,
+            all_visible=all_visible,
             scroll=scroll,
             max_scrolls=max_scrolls,
             max_idle_scrolls=max_idle_scrolls,
