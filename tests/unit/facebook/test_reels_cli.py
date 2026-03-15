@@ -1,7 +1,9 @@
 import json
+import io
 import types
 import tempfile
 import unittest
+from contextlib import redirect_stderr
 from pathlib import Path
 from unittest import mock
 
@@ -325,6 +327,80 @@ class AuthenticatedCollectorTests(unittest.TestCase):
             browser.new_context_calls,
             [{"storage_state": ".secrets/facebook-state.json"}],
         )
+
+
+class StorageStateCliTests(unittest.TestCase):
+    def test_parse_args_accepts_storage_state(self):
+        args = cli.parse_args(
+            [
+                "--profile-url",
+                "https://example.com/reels",
+                "--storage-state",
+                ".secrets/facebook-state.json",
+            ]
+        )
+
+        self.assertEqual(args.storage_state, ".secrets/facebook-state.json")
+
+    def test_main_passes_storage_state_into_collector_construction(self):
+        captured = {}
+
+        class FakeManagedCollector:
+            def __enter__(self):
+                captured["entered"] = True
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                captured["exited"] = True
+
+        def fake_collector_factory(**kwargs):
+            captured["kwargs"] = kwargs
+            return FakeManagedCollector()
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            storage_state = Path(tmpdir) / "facebook-state.json"
+            storage_state.write_text("{}", encoding="utf-8")
+
+            with mock.patch.object(cli, "PlaywrightFacebookCollector", side_effect=fake_collector_factory):
+                with mock.patch.object(
+                    cli,
+                    "export_reels",
+                    return_value=(
+                        {"discovered": 1, "written": 1, "failed": 0},
+                        Path(tmpdir) / "output",
+                    ),
+                ):
+                    exit_code = cli.main(
+                        [
+                            "--profile-url",
+                            "https://example.com/reels",
+                            "--storage-state",
+                            str(storage_state),
+                            "--output-root",
+                            tmpdir,
+                        ]
+                    )
+
+        self.assertEqual(exit_code, 0)
+        self.assertEqual(captured["kwargs"]["storage_state_path"], str(storage_state))
+
+    def test_main_returns_error_when_storage_state_path_is_missing(self):
+        stderr = io.StringIO()
+
+        with mock.patch.object(cli, "PlaywrightFacebookCollector") as collector_factory:
+            with redirect_stderr(stderr):
+                exit_code = cli.main(
+                    [
+                        "--profile-url",
+                        "https://example.com/reels",
+                        "--storage-state",
+                        ".secrets/missing-facebook-state.json",
+                    ]
+                )
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("storage state", stderr.getvalue().lower())
+        collector_factory.assert_not_called()
 
 
 class MainTests(unittest.TestCase):

@@ -66,6 +66,7 @@ def parse_args(argv=None):
     parser.add_argument("--profile-url", required=True)
     parser.add_argument("--limit", type=int, default=10)
     parser.add_argument("--output-root", default="output")
+    parser.add_argument("--storage-state")
     parser.set_defaults(scroll=True)
     parser.add_argument(
         "--no-scroll",
@@ -83,12 +84,23 @@ def parse_args(argv=None):
 def main(argv=None, collector=None, collected_at=None):
     args = parse_args(argv)
     managed_collector = collector
+    storage_state_path = None
+
+    if args.storage_state:
+        storage_state_path = Path(args.storage_state)
+        if not storage_state_path.is_file():
+            print(
+                f"Storage state file not found: {storage_state_path}",
+                file=sys.stderr,
+            )
+            return 1
 
     try:
         if managed_collector is None:
             managed_collector = PlaywrightFacebookCollector(
                 headless=not args.headed,
                 delay_seconds=args.delay_seconds,
+                storage_state_path=str(storage_state_path) if storage_state_path else None,
             ).__enter__()
 
         summary, output_dir = export_reels(
