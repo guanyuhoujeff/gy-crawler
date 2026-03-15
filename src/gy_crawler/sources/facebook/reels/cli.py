@@ -8,6 +8,13 @@ from .models import build_reel_payload
 from .paths import build_account_directory_name
 
 
+def build_storage_state_refresh_message(storage_state_path):
+    return (
+        "Rerun the login bootstrap to refresh the saved Facebook session:\n"
+        f"python3 scripts/facebook_login_session.py --storage-state {storage_state_path} --headed"
+    )
+
+
 def write_payload(output_dir, payload):
     output_dir.mkdir(parents=True, exist_ok=True)
     path = output_dir / f"{payload['content_id']}.json"
@@ -90,7 +97,10 @@ def main(argv=None, collector=None, collected_at=None):
         storage_state_path = Path(args.storage_state)
         if not storage_state_path.is_file():
             print(
-                f"Storage state file not found: {storage_state_path}",
+                (
+                    f"Storage state file not found: {storage_state_path}\n"
+                    f"{build_storage_state_refresh_message(storage_state_path)}"
+                ),
                 file=sys.stderr,
             )
             return 1
@@ -114,7 +124,17 @@ def main(argv=None, collector=None, collected_at=None):
             max_idle_scrolls=args.max_idle_scrolls,
         )
     except Exception as exc:  # noqa: BLE001
-        print(str(exc), file=sys.stderr)
+        if storage_state_path is not None:
+            print(
+                (
+                    f"{exc}\n"
+                    "The saved Facebook session may be expired.\n"
+                    f"{build_storage_state_refresh_message(storage_state_path)}"
+                ),
+                file=sys.stderr,
+            )
+        else:
+            print(str(exc), file=sys.stderr)
         return 1
     finally:
         if collector is None and managed_collector is not None:

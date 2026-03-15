@@ -403,6 +403,68 @@ class StorageStateCliTests(unittest.TestCase):
         collector_factory.assert_not_called()
 
 
+class StorageStateErrorTests(unittest.TestCase):
+    def test_missing_storage_state_path_includes_refresh_command(self):
+        stderr = io.StringIO()
+
+        with redirect_stderr(stderr):
+            exit_code = cli.main(
+                [
+                    "--profile-url",
+                    "https://example.com/reels",
+                    "--storage-state",
+                    ".secrets/missing-facebook-state.json",
+                ]
+            )
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("rerun", stderr.getvalue().lower())
+        self.assertIn("facebook_login_session.py", stderr.getvalue())
+
+    def test_authenticated_collection_failure_mentions_expired_session_without_fallback(self):
+        stderr = io.StringIO()
+
+        class FakeManagedCollector:
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return None
+
+        with tempfile.TemporaryDirectory() as tmpdir:
+            storage_state = Path(tmpdir) / "facebook-state.json"
+            storage_state.write_text("{}", encoding="utf-8")
+
+            with mock.patch.object(
+                cli,
+                "PlaywrightFacebookCollector",
+                return_value=FakeManagedCollector(),
+            ) as collector_factory:
+                with mock.patch.object(
+                    cli,
+                    "export_reels",
+                    side_effect=RuntimeError("Profile collection failed: no visible reels found"),
+                ):
+                    with redirect_stderr(stderr):
+                        exit_code = cli.main(
+                            [
+                                "--profile-url",
+                                "https://example.com/reels",
+                                "--storage-state",
+                                str(storage_state),
+                            ]
+                        )
+
+        self.assertEqual(exit_code, 1)
+        self.assertIn("expired", stderr.getvalue().lower())
+        self.assertIn("facebook_login_session.py", stderr.getvalue())
+        self.assertEqual(collector_factory.call_count, 1)
+        self.assertEqual(
+            collector_factory.call_args.kwargs["storage_state_path"],
+            str(storage_state),
+        )
+
+
 class MainTests(unittest.TestCase):
     def test_main_writes_one_json_per_visible_reel(self):
         with tempfile.TemporaryDirectory() as tmpdir:
