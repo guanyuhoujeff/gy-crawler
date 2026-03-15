@@ -38,6 +38,26 @@ python scripts/facebook_reels_export.py \
   --output-root output
 ```
 
+Facebook login session bootstrap:
+
+```bash
+python3 scripts/facebook_login_session.py \
+  --storage-state .secrets/facebook-state.json \
+  --headed
+```
+
+Facebook Reels all visible crawl:
+
+```bash
+python3 scripts/facebook_reels_export.py \
+  --profile-url "https://www.facebook.com/imoneytalkalex/reels/" \
+  --storage-state .secrets/facebook-state.json \
+  --all-visible \
+  --max-idle-scrolls 5 \
+  --delay-seconds 2 \
+  --output-root output
+```
+
 
 ```bash
 python -m gy_crawler.sources.facebook.reels.cli \
