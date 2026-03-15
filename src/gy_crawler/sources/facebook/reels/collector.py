@@ -83,9 +83,10 @@ def collect_visible_reels(
 
 
 class PlaywrightFacebookCollector:
-    def __init__(self, headless=True, delay_seconds=1.5):
+    def __init__(self, headless=True, delay_seconds=1.5, storage_state_path=None):
         self.headless = headless
         self.delay_seconds = delay_seconds
+        self.storage_state_path = storage_state_path
         self._playwright = None
         self._browser = None
         self._context = None
@@ -96,7 +97,10 @@ class PlaywrightFacebookCollector:
 
         self._playwright = sync_playwright().start()
         self._browser = self._playwright.chromium.launch(headless=self.headless)
-        self._context = self._browser.new_context()
+        context_kwargs = {}
+        if self.storage_state_path is not None:
+            context_kwargs["storage_state"] = self.storage_state_path
+        self._context = self._browser.new_context(**context_kwargs)
         self._page = self._context.new_page()
         return self
 

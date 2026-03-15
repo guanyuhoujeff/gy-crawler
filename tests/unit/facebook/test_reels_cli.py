@@ -1,7 +1,9 @@
 import json
+import types
 import tempfile
 import unittest
 from pathlib import Path
+from unittest import mock
 
 from gy_crawler.sources.facebook.reels import cli, collector, parser, paths
 
@@ -246,6 +248,83 @@ class FakeCollector:
             "published_time_iso": "2025-05-05T22:30:00+00:00",
             "caption": f"caption for {reel_url}",
         }
+
+
+class FakeBrowserContext:
+    def __init__(self):
+        self.closed = False
+        self.page = object()
+
+    def new_page(self):
+        return self.page
+
+    def close(self):
+        self.closed = True
+
+
+class FakeBrowser:
+    def __init__(self):
+        self.closed = False
+        self.new_context_calls = []
+        self.context = FakeBrowserContext()
+
+    def new_context(self, **kwargs):
+        self.new_context_calls.append(kwargs)
+        return self.context
+
+    def close(self):
+        self.closed = True
+
+
+class FakeChromium:
+    def __init__(self, browser):
+        self.browser = browser
+        self.launch_calls = []
+
+    def launch(self, **kwargs):
+        self.launch_calls.append(kwargs)
+        return self.browser
+
+
+class FakePlaywrightRuntime:
+    def __init__(self, chromium):
+        self.chromium = chromium
+        self.stopped = False
+
+    def stop(self):
+        self.stopped = True
+
+
+class FakeSyncPlaywrightFactory:
+    def __init__(self, runtime):
+        self.runtime = runtime
+
+    def start(self):
+        return self.runtime
+
+
+class AuthenticatedCollectorTests(unittest.TestCase):
+    def test_enter_passes_storage_state_to_new_context(self):
+        browser = FakeBrowser()
+        chromium = FakeChromium(browser)
+        runtime = FakePlaywrightRuntime(chromium)
+        fake_sync_api = types.SimpleNamespace(
+            sync_playwright=lambda: FakeSyncPlaywrightFactory(runtime)
+        )
+
+        with mock.patch.dict("sys.modules", {"playwright.sync_api": fake_sync_api}):
+            managed = collector.PlaywrightFacebookCollector(
+                storage_state_path=".secrets/facebook-state.json"
+            )
+            try:
+                managed.__enter__()
+            finally:
+                managed.__exit__(None, None, None)
+
+        self.assertEqual(
+            browser.new_context_calls,
+            [{"storage_state": ".secrets/facebook-state.json"}],
+        )
 
 
 class MainTests(unittest.TestCase):
