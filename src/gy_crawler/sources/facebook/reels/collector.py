@@ -35,12 +35,14 @@ def _scroll_page(page):
 def collect_visible_reels(
     page,
     limit,
+    all_visible=False,
     scroll=True,
     max_scrolls=10,
     max_idle_scrolls=2,
     delay_ms=1000,
 ):
-    raw_items = page.evaluate(VISIBLE_REELS_SCRIPT, limit)
+    fetch_limit = limit if not all_visible else 10000
+    raw_items = page.evaluate(VISIBLE_REELS_SCRIPT, fetch_limit)
     reels = []
     seen = set()
     scrolls = 0
@@ -60,10 +62,10 @@ def collect_visible_reels(
                     "view_count_visible": item.get("text") or None,
                 }
             )
-            if len(reels) >= limit:
+            if not all_visible and len(reels) >= limit:
                 break
 
-        if len(reels) >= limit or not scroll or scrolls >= max_scrolls:
+        if (not all_visible and len(reels) >= limit) or not scroll or scrolls >= max_scrolls:
             break
 
         if new_count == 0:
@@ -77,7 +79,7 @@ def collect_visible_reels(
         if hasattr(page, "wait_for_timeout"):
             page.wait_for_timeout(delay_ms)
         scrolls += 1
-        raw_items = page.evaluate(VISIBLE_REELS_SCRIPT, limit)
+        raw_items = page.evaluate(VISIBLE_REELS_SCRIPT, fetch_limit)
 
     return reels
 

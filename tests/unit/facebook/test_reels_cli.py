@@ -220,6 +220,96 @@ class VisibleReelCollectionTests(unittest.TestCase):
         self.assertEqual(page.scroll_round, 2)
 
 
+class AllVisibleCollectionTests(unittest.TestCase):
+    def test_collect_visible_reels_collects_across_scroll_rounds_until_idle_stop(self):
+        page = FakePage(
+            [
+                [{"href": "https://www.facebook.com/reel/795067433657541/", "text": "19K"}],
+                [
+                    {"href": "https://www.facebook.com/reel/795067433657541/", "text": "19K"},
+                    {"href": "https://www.facebook.com/reel/814700504289989/", "text": "15K"},
+                ],
+                [
+                    {"href": "https://www.facebook.com/reel/795067433657541/", "text": "19K"},
+                    {"href": "https://www.facebook.com/reel/814700504289989/", "text": "15K"},
+                    {"href": "https://www.facebook.com/reel/1242954067485245/", "text": "12K"},
+                ],
+                [
+                    {"href": "https://www.facebook.com/reel/814700504289989/", "text": "15K"},
+                    {"href": "https://www.facebook.com/reel/1242954067485245/", "text": "12K"},
+                ],
+                [
+                    {"href": "https://www.facebook.com/reel/814700504289989/", "text": "15K"},
+                    {"href": "https://www.facebook.com/reel/1242954067485245/", "text": "12K"},
+                ],
+            ]
+        )
+
+        result = collector.collect_visible_reels(
+            page,
+            limit=1,
+            all_visible=True,
+            scroll=True,
+            max_scrolls=10,
+            max_idle_scrolls=2,
+        )
+
+        self.assertEqual(
+            result,
+            [
+                {
+                    "reel_url": "https://www.facebook.com/reel/795067433657541/",
+                    "view_count_visible": "19K",
+                },
+                {
+                    "reel_url": "https://www.facebook.com/reel/814700504289989/",
+                    "view_count_visible": "15K",
+                },
+                {
+                    "reel_url": "https://www.facebook.com/reel/1242954067485245/",
+                    "view_count_visible": "12K",
+                },
+            ],
+        )
+        self.assertEqual(page.scroll_round, 4)
+
+    def test_collect_visible_reels_all_visible_mode_still_deduplicates_across_rounds(self):
+        page = FakePage(
+            [
+                [{"href": "https://www.facebook.com/reel/795067433657541/?foo=bar", "text": "19K"}],
+                [
+                    {"href": "https://www.facebook.com/reel/795067433657541/", "text": "19K"},
+                    {"href": "https://www.facebook.com/reel/795067433657541/?tracking=1", "text": "19K"},
+                    {"href": "https://www.facebook.com/reel/814700504289989/", "text": "15K"},
+                ],
+                [
+                    {"href": "https://www.facebook.com/reel/814700504289989/?foo=1", "text": "15K"},
+                ],
+                [
+                    {"href": "https://www.facebook.com/reel/814700504289989/?foo=1", "text": "15K"},
+                ],
+            ]
+        )
+
+        result = collector.collect_visible_reels(
+            page,
+            limit=1,
+            all_visible=True,
+            scroll=True,
+            max_scrolls=10,
+            max_idle_scrolls=2,
+        )
+
+        self.assertEqual(len(result), 2)
+        self.assertEqual(
+            [item["reel_url"] for item in result],
+            [
+                "https://www.facebook.com/reel/795067433657541/",
+                "https://www.facebook.com/reel/814700504289989/",
+            ],
+        )
+
+
 class FakeCollector:
     def collect_profile(
         self,
