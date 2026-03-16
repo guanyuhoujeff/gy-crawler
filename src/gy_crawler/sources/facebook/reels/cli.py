@@ -4,8 +4,9 @@ import sys
 from pathlib import Path
 
 from .collector import PlaywrightFacebookCollector, collect_visible_reels
+from .downloader import download_reel
 from .models import build_reel_payload
-from .paths import build_account_directory_name
+from .paths import build_account_directory_name, extract_reel_id
 
 
 def build_storage_state_refresh_message(storage_state_path):
@@ -32,6 +33,8 @@ def export_reels(
     scroll=True,
     max_scrolls=10,
     max_idle_scrolls=2,
+    download=False,
+    cookies_from_browser=None,
 ):
     profile = collector.collect_profile(
         profile_url,
@@ -42,7 +45,7 @@ def export_reels(
         max_idle_scrolls=max_idle_scrolls,
     )
     output_dir = Path(output_root) / build_account_directory_name(profile["account_name"])
-    summary = {"discovered": len(profile["reels"]), "written": 0, "failed": 0}
+    summary = {"discovered": len(profile["reels"]), "written": 0, "failed": 0, "downloaded": 0, "download_failed": 0}
 
     for reel in profile["reels"]:
         try:
@@ -66,6 +69,25 @@ def export_reels(
         )
         write_payload(output_dir, payload)
         summary["written"] += 1
+
+        if download:
+            reel_id = extract_reel_id(reel["reel_url"])
+            try:
+                result = download_reel(
+                    reel_url=reel["reel_url"],
+                    output_dir=output_dir,
+                    reel_id=reel_id,
+                    cookies_from_browser=cookies_from_browser,
+                )
+                if result:
+                    summary["downloaded"] += 1
+                    print(f"  downloaded {result.name}")
+                else:
+                    summary["download_failed"] += 1
+                    print(f"  download returned no file for reel {reel_id}", file=sys.stderr)
+            except Exception as exc:  # noqa: BLE001
+                summary["download_failed"] += 1
+                print(f"  download failed for reel {reel_id}: {exc}", file=sys.stderr)
 
     return summary, output_dir
 
@@ -93,6 +115,15 @@ def parse_args(argv=None):
     parser.add_argument("--max-idle-scrolls", type=int, default=2)
     parser.add_argument("--headed", action="store_true", help="Run with a visible browser window")
     parser.add_argument("--delay-seconds", type=float, default=1.5)
+    parser.add_argument(
+        "--download",
+        action="store_true",
+        help="Download reel videos via yt-dlp after collecting metadata",
+    )
+    parser.add_argument(
+        "--cookies-from-browser",
+        help="Browser to extract cookies from for yt-dlp (e.g. chrome, firefox)",
+    )
     args = parser.parse_args(argv)
     if not args.all_visible and args.limit is None:
         args.limit = 10
@@ -134,6 +165,8 @@ def main(argv=None, collector=None, collected_at=None):
             scroll=args.scroll,
             max_scrolls=args.max_scrolls,
             max_idle_scrolls=args.max_idle_scrolls,
+            download=args.download,
+            cookies_from_browser=args.cookies_from_browser,
         )
     except Exception as exc:  # noqa: BLE001
         if storage_state_path is not None:
@@ -152,11 +185,12 @@ def main(argv=None, collector=None, collected_at=None):
         if collector is None and managed_collector is not None:
             managed_collector.__exit__(None, None, None)
 
+    parts = ["discovered={discovered}", "written={written}", "failed={failed}"]
+    if args.download:
+        parts.extend(["downloaded={downloaded}", "download_failed={download_failed}"])
+    parts.append("output_dir={output_dir}")
     print(
-        "discovered={discovered} written={written} failed={failed} output_dir={output_dir}".format(
-            output_dir=output_dir,
-            **summary,
-        )
+        " ".join(parts).format(output_dir=output_dir, **summary)
     )
     return 0 if summary["written"] > 0 else 1
 

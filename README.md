@@ -50,7 +50,7 @@ Facebook Reels all visible crawl:
 
 ```bash
 python3 scripts/facebook_reels_export.py \
-  --profile-url "https://www.facebook.com/imoneytalkalex/reels/" \
+  --profile-url "https://www.facebook.com/profile.php?id=61552621247827&sk=reels_tab" \
   --storage-state .secrets/facebook-state.json \
   --all-visible \
   --max-idle-scrolls 5 \

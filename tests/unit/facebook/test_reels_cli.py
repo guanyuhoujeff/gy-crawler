@@ -650,7 +650,7 @@ class AllVisibleWiringTests(unittest.TestCase):
                 collector=collector_double,
             )
 
-        self.assertEqual(summary, {"discovered": 0, "written": 0, "failed": 0})
+        self.assertEqual(summary, {"discovered": 0, "written": 0, "failed": 0, "downloaded": 0, "download_failed": 0})
         self.assertTrue(str(output_dir).endswith("facebook_subudhiisha1"))
         self.assertEqual(
             collector_double.collect_profile_calls,
