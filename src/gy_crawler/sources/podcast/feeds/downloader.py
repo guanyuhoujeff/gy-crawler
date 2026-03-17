@@ -87,6 +87,7 @@ def download_feed(
     log_file=None,
     timeout=DEFAULT_TIMEOUT,
     sleep_between_downloads=DEFAULT_SLEEP_BETWEEN_DOWNLOADS,
+    limit=0,
 ):
     output_path = Path(output_dir)
     log_path = Path(log_file) if log_file else output_path / "download_log.csv"
@@ -94,6 +95,8 @@ def download_feed(
 
     feed = parse_feed(rss_url)
     entries = feed.entries
+    if limit > 0:
+        entries = entries[:limit]
     if not entries:
         return {"success": 0, "skipped": 0, "failed": 0, "total": 0}
 

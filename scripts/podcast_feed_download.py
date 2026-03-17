@@ -20,6 +20,7 @@ def parse_args(argv=None):
     parser.add_argument("--rss-url", required=True)
     parser.add_argument("--output-dir", default="output/podcast")
     parser.add_argument("--log-file", default="data/tmp/podcast/feed_download_log.csv")
+    parser.add_argument("--limit", type=int, default=0, help="Max episodes to download (0=all)")
     return parser.parse_args(argv)
 
 
@@ -29,6 +30,7 @@ def main(argv=None):
         rss_url=args.rss_url,
         output_dir=Path(args.output_dir),
         log_file=Path(args.log_file) if args.log_file else None,
+        limit=args.limit,
     )
     print(
         "total={total} success={success} skipped={skipped} failed={failed}".format(
