@@ -18,7 +18,7 @@ from gy_crawler.sources.podcast.feeds.downloader import download_feed
 def parse_args(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--rss-url", required=True)
-    parser.add_argument("--output-dir", default="data/raw/podcast/episodes/audio")
+    parser.add_argument("--output-dir", default="output/podcast")
     parser.add_argument("--log-file", default="data/tmp/podcast/feed_download_log.csv")
     return parser.parse_args(argv)
 
