@@ -18,7 +18,7 @@ from gy_crawler.sources.podcast.feeds.downloader import download_feed
 def parse_args(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--rss-url", required=True)
-    parser.add_argument("--output-dir", default="output/podcast")
+    parser.add_argument("--output-dir", default="raw_file_output/podcast")
     parser.add_argument("--log-file", default="data/tmp/podcast/feed_download_log.csv")
     parser.add_argument("--limit", type=int, default=0, help="Max episodes to download (0=all)")
     return parser.parse_args(argv)
@@ -33,7 +33,7 @@ def main(argv=None):
         limit=args.limit,
     )
     print(
-        "total={total} success={success} skipped={skipped} failed={failed}".format(
+        "total={total} success={success} skipped={skipped} failed={failed} output_dir={output_dir}".format(
             **summary,
         )
     )

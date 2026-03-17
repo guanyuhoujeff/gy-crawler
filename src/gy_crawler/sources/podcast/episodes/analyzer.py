@@ -67,7 +67,7 @@ def process_batch(input_dir, output_dir, uploader=None, workers=1):
 
 def parse_args(argv=None):
     parser = argparse.ArgumentParser()
-    parser.add_argument("--input-dir", default="output/podcast")
+    parser.add_argument("--input-dir", default="raw_file_output/podcast")
     parser.add_argument(
         "--output-dir",
         default="data/processed/podcast/episode_analysis/markdown",

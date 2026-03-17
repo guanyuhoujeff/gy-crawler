@@ -70,7 +70,7 @@ def parse_args(argv=None):
     )
     parser.add_argument(
         "--input-dir",
-        default="output",
+        default="raw_file_output/fb_reels",
         help="Directory containing .mp4 files (scans recursively)",
     )
     parser.add_argument(

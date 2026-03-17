@@ -15,7 +15,9 @@ tests/
 docs/
 scripts/
 notebooks/
-output/
+raw_file_output/
+  fb_reels/<帳號>/
+  podcast/<帳號>/
 ```
 
 ## Setup
@@ -35,7 +37,7 @@ Facebook Reels:
 python scripts/facebook_reels_export.py \
   --profile-url "https://www.facebook.com/profile.php?id=100070097403579&sk=reels_tab" \
   --limit 10 \
-  --output-root output
+  --output-root raw_file_output/fb_reels
 ```
 
 Facebook login session bootstrap:
@@ -55,14 +57,14 @@ python3 scripts/facebook_reels_export.py \
   --all-visible \
   --max-idle-scrolls 5 \
   --delay-seconds 2 \
-  --output-root output
+  --output-root raw_file_output/fb_reels
 ```
 
 
 Download reel videos from existing output JSON:
 
 ```bash
-python scripts/download_reels.py output/<facebook_profile_name> \
+python scripts/download_reels.py raw_file_output/fb_reels/<facebook_profile_name> \
   --storage-state .secrets/facebook-state.json
 ```
 
@@ -70,7 +72,7 @@ Analyze downloaded reel videos:
 
 ```bash
 python scripts/facebook_reels_analyze.py \
-  --input-dir output/<facebook_profile_name> \
+  --input-dir raw_file_output/fb_reels/<facebook_profile_name> \
   --output-dir data/processed/facebook/reel_analysis/<facebook_profile_name>/markdown
 ```
 
@@ -85,7 +87,7 @@ Podcast episode analyzer:
 
 ```bash
 python -m gy_crawler.sources.podcast.episodes.analyzer \
-  --input-dir data/raw/podcast/episodes/audio \
+  --input-dir raw_file_output/podcast \
   --output-dir data/processed/podcast/episode_analysis/markdown
 ```
 
@@ -94,7 +96,7 @@ Podcast feed downloader:
 ```bash
 python scripts/podcast_feed_download.py \
   --rss-url "https://feed.firstory.me/rss/user/ckgt4pmfa3cjt0812r7uko63o" \
-  --output-dir data/raw/podcast/episodes/audio
+  --output-dir raw_file_output/podcast
 ```
 
 ## Tests

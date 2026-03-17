@@ -95,7 +95,7 @@ def export_reels(
 def parse_args(argv=None):
     parser = argparse.ArgumentParser()
     parser.add_argument("--profile-url", required=True)
-    parser.add_argument("--output-root", default="output")
+    parser.add_argument("--output-root", default="raw_file_output/fb_reels")
     parser.add_argument("--storage-state")
     mode_group = parser.add_mutually_exclusive_group()
     mode_group.add_argument("--limit", type=int)

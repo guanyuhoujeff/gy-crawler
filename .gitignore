@@ -6,6 +6,7 @@ __pycache__/
 .worktrees/
 
 output/
+raw_file_output/
 data/raw/*
 !data/raw/.gitkeep
 data/processed/*

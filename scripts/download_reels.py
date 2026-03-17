@@ -1,9 +1,9 @@
 """Download reel videos from already-exported JSON metadata files.
 
 Usage:
-    python scripts/download_reels.py output/facebook_imoneytalk --storage-state .secrets/facebook-state.json
-    python scripts/download_reels.py output/facebook_imoneytalk --cookies-from-browser firefox
-    python scripts/download_reels.py output  # scans all subdirectories
+    python scripts/download_reels.py raw_file_output/fb_reels/facebook_imoneytalk --storage-state .secrets/facebook-state.json
+    python scripts/download_reels.py raw_file_output/fb_reels/facebook_imoneytalk --cookies-from-browser firefox
+    python scripts/download_reels.py raw_file_output/fb_reels  # scans all subdirectories
 """
 
 from pathlib import Path
@@ -53,7 +53,7 @@ def main():
     )
     parser.add_argument(
         "directory",
-        help="Path to output directory (e.g. output/facebook_imoneytalk or output/)",
+        help="Path to output directory (e.g. raw_file_output/fb_reels/facebook_imoneytalk or raw_file_output/fb_reels/)",
     )
     parser.add_argument(
         "--storage-state",

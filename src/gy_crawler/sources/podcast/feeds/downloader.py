@@ -61,6 +61,7 @@ def download_file(url: str, output_path: Path, timeout=DEFAULT_TIMEOUT) -> None:
 
 def init_log(output_dir: Path, log_file: Path):
     output_dir.mkdir(parents=True, exist_ok=True)
+    log_file.parent.mkdir(parents=True, exist_ok=True)
     if not log_file.exists():
         with log_file.open("w", newline="", encoding="utf-8-sig") as file_obj:
             writer = csv.writer(file_obj)
@@ -81,6 +82,12 @@ def parse_feed(rss_url):
     return feedparser.parse(rss_url)
 
 
+def build_feed_directory_name(feed_title):
+    name = re.sub(r'[\\/:*?"<>|]', "_", feed_title)
+    name = re.sub(r"\s+", "_", name).strip("_")
+    return name[:120] or "unknown_feed"
+
+
 def download_feed(
     rss_url,
     output_dir,
@@ -89,16 +96,19 @@ def download_feed(
     sleep_between_downloads=DEFAULT_SLEEP_BETWEEN_DOWNLOADS,
     limit=0,
 ):
-    output_path = Path(output_dir)
+    feed = parse_feed(rss_url)
+    feed_title = feed.feed.get("title", "") or "unknown_feed"
+    feed_dir_name = build_feed_directory_name(feed_title)
+
+    output_path = Path(output_dir) / feed_dir_name
     log_path = Path(log_file) if log_file else output_path / "download_log.csv"
     init_log(output_path, log_path)
 
-    feed = parse_feed(rss_url)
     entries = feed.entries
     if limit > 0:
         entries = entries[:limit]
     if not entries:
-        return {"success": 0, "skipped": 0, "failed": 0, "total": 0}
+        return {"success": 0, "skipped": 0, "failed": 0, "total": 0, "output_dir": str(output_path)}
 
     summary = {"success": 0, "skipped": 0, "failed": 0, "total": len(entries)}
     for index, entry in enumerate(entries, start=1):
@@ -131,4 +141,5 @@ def download_feed(
 
         time.sleep(sleep_between_downloads)
 
+    summary["output_dir"] = str(output_path)
     return summary
