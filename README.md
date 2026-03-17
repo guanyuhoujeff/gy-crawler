@@ -59,11 +59,19 @@ python3 scripts/facebook_reels_export.py \
 ```
 
 
+Download reel videos from existing output JSON:
+
 ```bash
-python -m gy_crawler.sources.facebook.reels.cli \
-  --profile-url "https://www.facebook.com/profile.php?id=100070097403579&sk=reels_tab" \
-  --limit 10 \
-  --output-root output
+python scripts/download_reels.py output/<facebook_profile_name> \
+  --storage-state .secrets/facebook-state.json
+```
+
+Analyze downloaded reel videos:
+
+```bash
+python scripts/facebook_reels_analyze.py \
+  --input-dir output/<facebook_profile_name> \
+  --output-dir data/processed/facebook/reel_analysis/<facebook_profile_name>/markdown
 ```
 
 Unified CLI:
